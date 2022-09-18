@@ -1,15 +1,19 @@
-#%%
+# %%
 
-import os, json, zlib, itertools, torch
+import os
+import json
+import zlib
+import itertools
+import torch
 import numpy as np
 from sapai import Player
 from sapai.battle import Battle
 from sapai.compress import compress, decompress, minimal_state
 
-### Pets with a random component
-###   Random component in the future should just be handled in an exact way
-###   whereby all possible outcomes are evaluated just once. This would
-###   significantly speed up training.
+# Pets with a random component
+# Random component in the future should just be handled in an exact way
+# whereby all possible outcomes are evaluated just once. This would
+# significantly speed up training.
 random_buy_pets = {"pet-otter"}
 random_sell_pets = {"pet-beaver"}
 random_pill_pets = {"pet-ant"}
@@ -58,11 +62,11 @@ class CombinatorialSearch:
         self.verbose = verbose
         self.max_actions = max_actions
 
-        ### This stores the player lists for performing all possible actions
+        # This stores the player lists for performing all possible actions
         self.player_list = []
 
-        ### Player dict stores compressed str of all players such that if the
-        ###   same player state will never be used twice
+        # Player dict stores compressed str of all players such that if the
+        # same player state will never be used twice
         self.player_state_dict = {}
 
         self.current_print_number = 0
@@ -73,7 +77,7 @@ class CombinatorialSearch:
 
         """
         action_list = [()]
-        ### Include only the actions that cost gold
+        # Include only the actions that cost gold
         action_list += self.avail_buy_pets(player)
         action_list += self.avail_buy_food(player)
         action_list += self.avail_buy_combine(player)
@@ -90,7 +94,7 @@ class CombinatorialSearch:
         action_list = []
         gold = player.gold
         if len(player.team) == 5:
-            ### Cannot buy for full team
+            # Cannot buy for full team
             return action_list
         for shop_idx in player.shop.filled:
             shop_slot = player.shop[shop_idx]
@@ -105,7 +109,7 @@ class CombinatorialSearch:
         """
         action_list = []
         gold = player.gold
-        if len(player.team) == 0:
+        if len(player.team) == 0:  # What about can purchase
             return action_list
         for shop_idx in player.shop.filled:
             shop_slot = player.shop[shop_idx]
@@ -114,7 +118,8 @@ class CombinatorialSearch:
                     for team_idx, team_slot in enumerate(player.team):
                         if team_slot.empty:
                             continue
-                        action_list.append((player.buy_food, shop_idx, team_idx))
+                        action_list.append(
+                            (player.buy_food, shop_idx, team_idx))
         return action_list
 
     def avail_buy_combine(self, player):
@@ -132,13 +137,14 @@ class CombinatorialSearch:
         for shop_idx in player.shop.filled:
             shop_slot = player.shop[shop_idx]
             if shop_slot.slot_type == "pet":
-                ### Can't combine if pet not already on team
+                # Can't combine if pet not already on team
                 if shop_slot.obj.name not in team_names:
                     continue
 
                 if shop_slot.cost <= gold:
                     for team_idx in team_names[shop_slot.obj.name]:
-                        action_list.append((player.buy_combine, shop_idx, team_idx))
+                        action_list.append(
+                            (player.buy_combine, shop_idx, team_idx))
         return action_list
 
     def avail_team_combine(self, player):
@@ -158,6 +164,7 @@ class CombinatorialSearch:
             if len(value) == 1:
                 continue
 
+            # What if one pet is level 3?
             for idx0, idx1 in itertools.combinations(value, r=2):
                 action_list.append((player.combine, idx0, idx1))
 
@@ -166,7 +173,7 @@ class CombinatorialSearch:
     def avail_sell(self, player):
         action_list = []
         if len(player.team) <= 1:
-            ### Not able to sell the final friend on team
+            # Not able to sell the final friend on team
             return action_list
         for team_idx, slot in enumerate(player.team):
             if slot.empty:
@@ -214,8 +221,8 @@ class CombinatorialSearch:
 
     def avail_roll(self, player):
         action_list = []
-        ##### ASSUMPTION: If gold is not 1, do not roll for now because with
-        #####   ShopLearn, rolling has no meaning
+        # ASSUMPTION: If gold is not 1, do not roll for now because with
+        # ShopLearn, rolling has no meaning
         if player.gold != 1:
             return action_list
         if player.gold > 0:
@@ -223,16 +230,16 @@ class CombinatorialSearch:
         return action_list
 
     def search(self, player, player_state_dict=None):
-        ### Initialize internal storage
+        # Initialize internal storage
         self.player = player
         self.player_list = []
         self.player_state = self.player.state
         self.current_print_number = 0
         self.print_message("start", self.player)
 
-        ### build_player_list searches shop actions and returns player list
-        ###   In addition, it builds a player_state_dict which can be used for
-        ###   faster lookup of redundant player states
+        # build_player_list searches shop actions and returns player list
+        # In addition, it builds a player_state_dict which can be used for
+        # faster lookup of redundant player states
         if player_state_dict == None:
             self.player_state_dict = {}
         else:
@@ -240,20 +247,20 @@ class CombinatorialSearch:
         self.player_list = self.build_player_list(self.player)
         self.print_message("player_list_done", self.player_list)
 
-        ### Now consider all possible reorderings of team
+        # Now consider all possible reorderings of team
         self.player_list, self.player_state_dict = self.search_reordering(
             self.player_list, self.player_state_dict
         )
 
-        ### End turn for all in player list
+        # End turn for all in player list
         for temp_player in self.player_list:
             temp_player.end_turn()
-        ### NOTE: After end_turn the player_state_dict has not been updated,
-        ###   therefore, the player_state_dict is no longer reliable and should
-        ###   NOT be used outside of this Class. If the player_state_dict is
-        ###   required, it should be rebuilt from the player_list itself
+        # NOTE: After end_turn the player_state_dict has not been updated,
+        # therefore, the player_state_dict is no longer reliable and should
+        # NOT be used outside of this Class. If the player_state_dict is
+        # required, it should be rebuilt from the player_list itself
 
-        ### Also, return only the unique team list for convenience
+        # Also, return only the unique team list for convenience
         self.team_dict = self.get_team_dict(self.player_list)
 
         self.print_message("done", (self.player_list, self.team_dict))
@@ -267,8 +274,8 @@ class CombinatorialSearch:
 
         """
         if player.gold <= 0:
-            ### If gold is 0, then this is exit condition for the
-            ### recursive function
+            # If gold is 0, then this is exit condition for the
+            # recursive function
             return []
         if player_list == None:
             player_list = []
@@ -283,38 +290,38 @@ class CombinatorialSearch:
         avail_actions = self.avail_actions(player)
         for temp_action in avail_actions:
             if temp_action == ():
-                ### Null action
+                # Null action
                 continue
 
-            #### Re-initialize Player
+            # Re-initialize Player
             temp_player = Player.from_state(player_state)
 
-            #### Perform action
+            # Perform action
             action_name = str(temp_action[0].__name__).split(".")[-1]
             action = getattr(temp_player, action_name)
             action(*temp_action[1:])
 
-            ### Check if this is unique player state
-            temp_player.team.move_forward()  ### Move team forward so that
-            ### team is index invariant
+            # Check if this is unique player state
+            temp_player.team.move_forward()  # Move team forward so that
+            # team is index invariant
 
-            ### Don't need history in order to check for redundancy of the
-            ###   shop state. This means that it does not matter how a Shop
-            ###   gets to a state, just that the state is identical to others.
+            # Don't need history in order to check for redundancy of the
+            # shop state. This means that it does not matter how a Shop
+            # gets to a state, just that the state is identical to others.
             cstate = compress(temp_player, minimal=True)
             # cstate = hash(json.dumps(temp_player.state))
             if cstate not in self.player_state_dict:
                 self.player_state_dict[cstate] = temp_player
             else:
-                ### If player state has been seen before, then do not append
-                ### to the player list.
+                # If player state has been seen before, then do not append
+                # to the player list.
                 continue
 
             player_list.append(temp_player)
 
         full_player_list = player_list
         for player in player_list:
-            ### Now, call this function recurisvely to add the next action
+            # Now, call this function recurisvely to add the next action
             temp_player_list = []
             self.build_player_list(player, temp_player_list)
             full_player_list += temp_player_list
@@ -332,37 +339,37 @@ class CombinatorialSearch:
             reorder_actions = self.avail_team_order(player)
             for temp_action in reorder_actions:
                 if temp_action == ():
-                    ### Null action
+                    # Null action
                     continue
 
-                #### Re-initialize identical Player
+                # Re-initialize identical Player
                 temp_player = Player.from_state(player_state)
 
-                #### Perform action
+                # Perform action
                 action_name = str(temp_action[0].__name__).split(".")[-1]
                 action = getattr(temp_player, action_name)
                 action(*temp_action[1:])
 
-                ### Check if this is unique player state
-                temp_player.team.move_forward()  ### Move team forward so that
-                ### team is index invariant
+                # Check if this is unique player state
+                temp_player.team.move_forward()  # Move team forward so that
+                # team is index invariant
 
-                ### Don't need history in order to check for redundancy of the
-                ###   shop state. This means that it does not matter how a Shop
-                ###   gets to a state, just that the state is identical to others.
+                # Don't need history in order to check for redundancy of the
+                # shop state. This means that it does not matter how a Shop
+                # gets to a state, just that the state is identical to others.
                 cstate = compress(temp_player, minimal=True)
                 # cstate = hash(json.dumps(temp_player.state))
                 if cstate not in player_state_dict:
                     player_state_dict[cstate] = temp_player
                 else:
-                    ### If player state has been seen before, then do not append
-                    ### to the player list.
+                    # If player state has been seen before, then do not append
+                    # to the player list.
                     continue
 
                 additional_player_list.append(temp_player)
 
-                ##### METHOD SHOULD BE USED THAT DOESN'T REQUIRE Player.from_state
-                #####   This would save a lot of time
+                # METHOD SHOULD BE USED THAT DOESN'T REQUIRE Player.from_state
+                # This would save a lot of time
                 # ### Move team back into place
                 # order_idx = temp_action[1]
                 # reorder_idx = np.argsort(order_idx).tolist()
@@ -382,11 +389,11 @@ class CombinatorialSearch:
         team_dict = {}
         for player in player_list:
             team = player.team
-            ### Move forward to make team index invariant
+            # Move forward to make team index invariant
             team.move_forward()
             cteam = compress(team, minimal=True)
-            ### Can just always do like this, don't need to check if it's
-            ###   already in dictionary because it can just be overwritten
+            # Can just always do like this, don't need to check if it's
+            # already in dictionary because it can just be overwritten
             team_dict[cteam] = team
         return team_dict
 
@@ -395,7 +402,8 @@ class CombinatorialSearch:
             return
 
         if message_type not in ["start", "size", "player_list_done", "done"]:
-            raise Exception("Unrecognized message type {}".format(message_type))
+            raise Exception(
+                "Unrecognized message type {}".format(message_type))
 
         if message_type == "start":
             print("---------------------------------------------------------")
@@ -465,10 +473,11 @@ class DatabaseLookupRanker:
             return self.run_against_database(team)
 
     def run_against_database(self, team):
-        #### Add team to database
+        # Add team to database
         team_key = compress(team, minimal=True)
         if team_key not in self.team_database:
-            self.team_database[team_key] = {"team": team, "wins": 0, "total": 0}
+            self.team_database[team_key] = {
+                "team": team, "wins": 0, "total": 0}
 
         for key, value in self.team_database.items():
             # print(team, value["team"])
@@ -534,7 +543,7 @@ class PairwiseBattles:
         self.output = output
 
     def battle(self, obj):
-        ### Prepare job-list on rank 0
+        # Prepare job-list on rank 0
         if self.rank == 0:
             team_list = []
             if type(obj) == dict:
@@ -551,26 +560,28 @@ class PairwiseBattles:
             print("{:16s}: {}".format("NUM RANKS", self.size), flush=True)
             print("{:16s}: {}".format("INPUT TEAMS", len(obj)), flush=True)
 
-            ### Easier for indexing
+            # Easier for indexing
             team_array = np.zeros((len(team_list),), dtype=object)
             team_array[:] = team_list[:]
             pair_idx = self._get_pair_idx(team_list)
-            print("{:16s}: {}".format("NUMBER BATTLES", len(pair_idx)), flush=True)
-            ### Should I send just index and read in files on all ranks...
-            ###   or should Teams be sent to ranks...
-            ### Well, I don't think this function will every have >2 GB sized
-            ###   team dataset anyways...
+            print("{:16s}: {}".format(
+                "NUMBER BATTLES", len(pair_idx)), flush=True)
+            # Should I send just index and read in files on all ranks...
+            # or should Teams be sent to ranks...
+            # Well, I don't think this function will every have >2 GB sized
+            # team dataset anyways...
             for temp_rank in np.arange(1, self.size):
-                temp_idx = pair_idx[temp_rank :: self.size]
+                temp_idx = pair_idx[temp_rank:: self.size]
                 temp_teams = np.take(team_array, temp_idx)
                 self.comm.send((temp_idx, temp_teams), temp_rank)
 
-            my_idx = pair_idx[0 :: self.size]
+            my_idx = pair_idx[0:: self.size]
             my_teams = np.take(team_array, my_idx)
-            print("{:16s}: {}".format("BATTLES PER RANK", len(my_teams)), flush=True)
+            print("{:16s}: {}".format(
+                "BATTLES PER RANK", len(my_teams)), flush=True)
 
         else:
-            ### Wait for info from rank 0
+            # Wait for info from rank 0
             my_idx, my_teams = self.comm.recv(source=0)
 
         if self.rank != 0:
@@ -582,7 +593,7 @@ class PairwiseBattles:
                 winner_list.append(temp_winner)
                 iter_idx += 1
         else:
-            #### This is split to remove branching code in the for loop above
+            # This is split to remove branching code in the for loop above
             winner_list = []
             iter_idx = 0
             for t0, t1 in my_teams:
@@ -600,26 +611,29 @@ class PairwiseBattles:
 
         winner_list = np.array(winner_list).astype(int)
 
-        ### Send results back to rank 0
+        # Send results back to rank 0
         self.comm.barrier()
 
         if self.rank == 0:
             print("------------------------------------", flush=True)
             print("DONE CALCULATING BATTLES", flush=True)
-            ### Using +1 so that the last entry in the array can be used as
-            ###   as throw-away when draws occur
+            # Using +1 so that the last entry in the array can be used as
+            # as throw-away when draws occur
             wins = np.zeros((len(team_array) + 1,)).astype(int)
             total = np.zeros((len(team_array) + 1,)).astype(int)
-            ### Add info from rank 0
-            add_totals_idx, add_totals = np.unique(my_idx[:, 0], return_counts=True)
+            # Add info from rank 0
+            add_totals_idx, add_totals = np.unique(
+                my_idx[:, 0], return_counts=True)
             total[add_totals_idx] += add_totals
-            add_totals_idx, add_totals = np.unique(my_idx[:, 1], return_counts=True)
+            add_totals_idx, add_totals = np.unique(
+                my_idx[:, 1], return_counts=True)
             total[add_totals_idx] += add_totals
-            ### Use for fast indexing for counting up wins
+            # Use for fast indexing for counting up wins
             temp_draw_idx = np.zeros((len(my_idx),)) - 1
             winner_idx_mask = np.hstack([my_idx, temp_draw_idx[:, None]])
             winner_idx_mask = winner_idx_mask.astype(int)
-            winner_idx = winner_idx_mask[np.arange(0, len(winner_list)), winner_list]
+            winner_idx = winner_idx_mask[np.arange(
+                0, len(winner_list)), winner_list]
             winner_idx, win_count = np.unique(winner_idx, return_counts=True)
             wins[winner_idx] += win_count
 
@@ -633,17 +647,18 @@ class PairwiseBattles:
                     temp_idx[:, 1], return_counts=True
                 )
                 total[add_totals_idx] += add_totals
-                ### Use for fast indexing for counting up wins
+                # Use for fast indexing for counting up wins
                 temp_draw_idx = np.zeros((len(temp_idx),)) - 1
                 winner_idx_mask = np.hstack([temp_idx, temp_draw_idx[:, None]])
                 winner_idx_mask = winner_idx_mask.astype(int)
                 winner_idx = winner_idx_mask[
                     np.arange(0, len(temp_winner_list)), temp_winner_list
                 ]
-                winner_idx, win_count = np.unique(winner_idx, return_counts=True)
+                winner_idx, win_count = np.unique(
+                    winner_idx, return_counts=True)
                 wins[winner_idx] += win_count
 
-            ### Throw away last entry for ties
+            # Throw away last entry for ties
             wins = wins[0:-1]
             total = total[0:-1]
             frac = wins / total
@@ -661,7 +676,7 @@ class PairwiseBattles:
         else:
             self.comm.send((my_idx, winner_list), 0)
 
-        ### Barrier before exiting
+        # Barrier before exiting
         self.comm.barrier()
         return
 
